@@ -57,7 +57,7 @@
 
         <div class="mb-4">
             <h2 class="fw-bold text-dark mb-1" style="font-size: 1.5rem;">Loan Information</h2>
-            <p class="text-muted small">Select your requested loan product and amount in GH₵.</p>
+            <p class="text-muted small">Select your requested loan product and amount in GHS.</p>
         </div>
 
         <form action="/apply/step1" method="POST" novalidate>
@@ -71,7 +71,7 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label text-secondary small fw-bold">Loan Amount (GH₵)</label>
+                <label class="form-label text-secondary small fw-bold">Loan Amount (GHS)</label>
                 <!-- Unrestricted input field allowing any value -->
                 <input type="text" name="amount" class="form-control" value="{{ request.args.get('amount', '5000') }}" placeholder="e.g. 500, 5000">
             </div>
